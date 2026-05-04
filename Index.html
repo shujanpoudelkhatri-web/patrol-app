@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Patrolling Report</title>
+
+<style>
+body { font-family: Arial; margin:0; text-align:center; }
+
+table {
+  border-collapse: collapse;
+  width:100%;
+  table-layout: fixed;
+}
+
+th, td {
+  border:1px solid #ccc;
+  padding:0px;
+  text-align:center;
+  font-size:7px;
+}
+
+th { background:#222; color:white; }
+
+select, input {
+  width:100%;
+  font-size:7px;
+  padding:0px;
+  border:none;
+  outline:none;
+  text-align:center;
+  text-align-last:center;
+}
+
+/* Compact */
+td:nth-child(1), th:nth-child(1) { width:28px; }
+td:nth-child(2), th:nth-child(2) { width:38px; }
+td:nth-child(3), th:nth-child(3) { width:60px; }
+td:nth-child(4), th:nth-child(4) { width:65px; }
+td:nth-child(5), th:nth-child(5) { width:55px; }
+td:nth-child(6), th:nth-child(6) { width:70px; }
+td:nth-child(7), th:nth-child(7) { width:auto; }
+
+.unattended { background:#ffb3b3; }
+
+h3 { margin:2px; font-size:10px; }
+
+button {
+  font-size:8px;
+  padding:4px;
+  margin:2px;
+}
+
+/* Undo */
+#undoBar {
+  display:none;
+  background:#333;
+  color:white;
+  padding:4px;
+  font-size:9px;
+}
+</style>
+</head>
+
+<body>
+
+<h3>📋 Patrolling Report</h3>
+
+<button onclick="addRow()">＋</button>
+<button onclick="undoDelete()">↩ Undo</button>
+<button onclick="clearData()">🧹</button>
+
+<div id="undoBar">
+  Deleted
+  <button onclick="undoDelete()">Undo</button>
+</div>
+
+<table>
+<thead>
+<tr>
+<th>Bay</th>
+<th>Reg</th>
+<th>Status</th>
+<th>Stairs</th>
+<th>Doors</th>
+<th>Seal</th>
+<th>Remarks</th>
+</tr>
+</thead>
+
+<tbody id="tableBody"></tbody>
+</table>
+
+<br>
+<b style="font-size:9px;">Reported By:</b><br>
+<input id="reportedBy" style="font-size:9px;" oninput="saveData()">
+
+<script>
+let data = [];
+let lastDeleted = null;
+let lastIndex = null;
+
+/* LOAD */
+function loadData() {
+  let saved = localStorage.getItem("data");
+  let name = localStorage.getItem("name");
+
+  if (saved) {
+    data = JSON.parse(saved);
+  } else {
+    for (let i = 0; i < 15; i++) data.push(createRow());
+  }
+
+  if (name) document.getElementById("reportedBy").value = name;
+}
+
+function createRow() {
+  return {
+    bay: "",
+    reg: "A6-",
+    status: "Attended",
+    stairs: "Connected",
+    door: "Open",
+    seal: "Attached",
+    remarks: "",
+    edited: false
+  };
+}
+
+function saveData() {
+  localStorage.setItem("data", JSON.stringify(data));
+  localStorage.setItem("name", document.getElementById("reportedBy").value);
+}
+
+function addRow() {
+  data.push(createRow());
+  render();
+}
+
+function clearData() {
+  if (confirm("Clear all?")) {
+    localStorage.clear();
+    location.reload();
+  }
+}
+
+/* UNDO */
+function showUndo() {
+  let bar = document.getElementById("undoBar");
+  bar.style.display = "block";
+  setTimeout(()=> bar.style.display="none", 5000);
+}
+
+function undoDelete() {
+  if (lastDeleted) {
+    data.splice(lastIndex, 0, lastDeleted);
+    saveData();
+    render();
+  }
+}
+
+/* REG */
+function updateReg(i, el) {
+  let v = el.value.toUpperCase().replace("A6-","");
+  data[i].reg = "A6-" + v;
+  el.value = v;
+  saveData();
+}
+
+function displayReg(full) {
+  return full.replace("A6-","");
+}
+
+/* REMARKS */
+function generateRemarks(r) {
+  if (r.stairs === "Disconnected") return "Stairs Disconnected";
+
+  let parts = [];
+  if (r.status === "Unattended") parts.push("Unattended");
+  if (r.door === "Open") parts.push("Door Open");
+  if (r.seal === "Not Attached") parts.push("No Seal");
+
+  if (parts.length === 0) return "Normal";
+  return parts.join(" & ");
+}
+
+/* SWIPE HANDLERS */
+function addSwipe(el, index) {
+  let startX = 0;
+
+  el.addEventListener("touchstart", e => {
+    startX = e.touches[0].clientX;
+  });
+
+  el.addEventListener("touchend", e => {
+    let endX = e.changedTouches[0].clientX;
+    let diff = startX - endX;
+
+    // swipe left
+    if (diff > 50) {
+      lastDeleted = data[index];
+      lastIndex = index;
+
+      data.splice(index,1);
+      saveData();
+      render();
+      showUndo();
+    }
+  });
+}
+
+/* RENDER */
+function render() {
+  let html = "";
+
+  data.forEach((r,i)=>{
+
+    if (!r.edited) r.remarks = generateRemarks(r);
+
+    let cls = r.status === "Unattended" ? "unattended" : "";
+
+    html += `
+    <tr class="${cls}" id="row${i}">
+      <td><input value="${r.bay}" oninput="data[${i}].bay=this.value;saveData()"></td>
+
+      <td>
+        <input value="${displayReg(r.reg)}"
+        oninput="updateReg(${i},this)">
+      </td>
+
+      <td>
+        <select onchange="data[${i}].status=this.value;data[${i}].edited=false;saveData();render()">
+          <option ${r.status=="Attended"?"selected":""}>Attended</option>
+          <option ${r.status=="Unattended"?"selected":""}>Unattended</option>
+        </select>
+      </td>
+
+      <td>
+        <select onchange="data[${i}].stairs=this.value;data[${i}].edited=false;saveData();render()">
+          <option ${r.stairs=="Connected"?"selected":""}>Connected</option>
+          <option ${r.stairs=="Disconnected"?"selected":""}>Disconnected</option>
+        </select>
+      </td>
+
+      <td>
+        <select onchange="data[${i}].door=this.value;data[${i}].edited=false;saveData();render()">
+          <option ${r.door=="Open"?"selected":""}>Open</option>
+          <option ${r.door=="Closed"?"selected":""}>Closed</option>
+        </select>
+      </td>
+
+      <td>
+        <select onchange="data[${i}].seal=this.value;data[${i}].edited=false;saveData();render()">
+          <option ${r.seal=="Attached"?"selected":""}>Attached</option>
+          <option ${r.seal=="Not Attached"?"selected":""}>Not Attached</option>
+        </select>
+      </td>
+
+      <td>
+        <input value="${r.remarks}" oninput="data[${i}].remarks=this.value;data[${i}].edited=true;saveData()">
+      </td>
+    </tr>
+    `;
+  });
+
+  document.getElementById("tableBody").innerHTML = html;
+
+  // attach swipe after render
+  data.forEach((_, i) => {
+    addSwipe(document.getElementById("row"+i), i);
+  });
+}
+
+loadData();
+render();
+</script>
+
+</body>
+</html>
